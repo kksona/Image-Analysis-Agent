@@ -1,64 +1,105 @@
-import datetime
-from zoneinfo import ZoneInfo
+import cv2
+import numpy as np
+from ultralytics import YOLO
+import requests
+from PIL import Image
+from PIL.ExifTags import TAGS
+import requests
+from io import BytesIO
 from google.adk.agents import Agent
 
-def get_objects(image_path: str) -> dict:
-    """Retrieves the objects present in an image.
+# Load the model once globally to avoid reloading on every call
+model = YOLO("yolov8n.pt")
+
+def detect_objects(image_url: str) -> dict:
+    """
+    Detect objects in an image from a URL using YOLOv8.
 
     Args:
-        image_path (str): The url of the image.
+        image_url (str): URL of the image to analyze.
 
     Returns:
-        dict: status and result or error msg.
+        dict: status and list of detected objects with label, confidence, bbox.
     """
-    if(image_path):
-        return {
-            "status":"success",
-            "report": (f'The image path is {image_path}')
-        }
-    else:
-        return {
-            "status": "failure",
-            "report": "No image path was provided."
-        }
-
-
-def get_current_time(city: str) -> dict:
-    """Returns the current time in a specified city.
-
-    Args:
-        city (str): The name of the city for which to retrieve the current time.
-
-    Returns:
-        dict: status and result or error msg.
-    """
-
-    if city.lower() == "new york":
-        tz_identifier = "America/New_York"
-    else:
+    response = requests.get(image_url)
+    if response.status_code != 200:
         return {
             "status": "error",
-            "error_message": (
-                f"Sorry, I don't have timezone information for {city}."
-            ),
+            "error_message": "Failed to download image from URL"
         }
 
-    tz = ZoneInfo(tz_identifier)
-    now = datetime.datetime.now(tz)
-    report = (
-        f'The current time in {city} is {now.strftime("%Y-%m-%d %H:%M:%S %Z%z")}'
-    )
-    return {"status": "success", "report": report}
+    image = cv2.imdecode(np.frombuffer(response.content, np.uint8), cv2.IMREAD_COLOR)
+
+    results = model(image)
+    detected_objects = []
+
+    for result in results:
+        boxes = result.boxes
+        for box in boxes:
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            conf = float(box.conf[0])
+            cls = int(box.cls[0])
+            label = model.names[cls]
+            detected_objects.append({
+                "label": label,
+                "confidence": round(conf, 2),
+                "bbox": [x1, y1, x2, y2]
+            })
+
+    return {
+        "status": "success",
+        "objects": detected_objects
+    }
+
+def get_metadata(image_url: str) -> dict:
+    """
+    Detect objects in an image from a URL using YOLOv8.
+
+    Args:
+        image_url (str): URL of the image to analyze.
+
+    Returns:
+        dict: status and list of detected objects with label, confidence, bbox.
+    """
+    response = requests.get(image_url)
+    if response.status_code != 200:
+        return {
+            "status": "error",
+            "error_message": "Failed to download image from URL"
+        }
+
+    image = cv2.imdecode(np.frombuffer(response.content, np.uint8), cv2.IMREAD_COLOR)
+
+    results = model(image)
+    detected_objects = []
+
+    for result in results:
+        boxes = result.boxes
+        for box in boxes:
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            conf = float(box.conf[0])
+            cls = int(box.cls[0])
+            label = model.names[cls]
+            detected_objects.append({
+                "label": label,
+                "confidence": round(conf, 2),
+                "bbox": [x1, y1, x2, y2]
+            })
+
+    return {
+        "status": "success",
+        "objects": detected_objects
+    }
 
 
+# Create the agent wrapping the detect_objects tool
 root_agent = Agent(
-    name="weather_time_agent",
-    model="gemini-2.0-flash",
-    description=(
-        "Agent to answer questions about the time in a city and provides the image path which is given to it."
-    ),
+    name="object_detection_agent",
+    model="gemini-2.0-flash",  
+    description="Agent that detects objects in images using YOLOv8.",
     instruction=(
-        "You are a helpful agent who can answer user questions about the time in a city and also provide the image path which is given by the user."
+        "You are an assistant that detects objects in images given a URL. "
+        "Return the detected objects with their label, confidence score, and bounding box coordinates."
     ),
-    tools=[get_objects, get_current_time],
+    tools=[detect_objects]
 )
