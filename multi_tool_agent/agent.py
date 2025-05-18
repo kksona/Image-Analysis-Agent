@@ -51,55 +51,48 @@ def detect_objects(image_url: str) -> dict:
         "objects": detected_objects
     }
 
-def get_metadata(image_url: str) -> dict:
+def extract_metadata(image_url: str) -> dict:
     """
-    Detect objects in an image from a URL using YOLOv8.
+    Extracts metadata from an image given its URL.
 
     Args:
-        image_url (str): URL of the image to analyze.
+        image_url (str): The URL of the image.
 
     Returns:
-        dict: status and list of detected objects with label, confidence, bbox.
+        dict: A dictionary containing the extracted metadata.
+              Returns an error dictionary if something goes wrong.
     """
-    response = requests.get(image_url)
-    if response.status_code != 200:
-        return {
-            "status": "error",
-            "error_message": "Failed to download image from URL"
-        }
-
-    image = cv2.imdecode(np.frombuffer(response.content, np.uint8), cv2.IMREAD_COLOR)
-
-    results = model(image)
-    detected_objects = []
-
-    for result in results:
-        boxes = result.boxes
-        for box in boxes:
-            x1, y1, x2, y2 = map(int, box.xyxy[0])
-            conf = float(box.conf[0])
-            cls = int(box.cls[0])
-            label = model.names[cls]
-            detected_objects.append({
-                "label": label,
-                "confidence": round(conf, 2),
-                "bbox": [x1, y1, x2, y2]
-            })
-
-    return {
-        "status": "success",
-        "objects": detected_objects
-    }
+    try:
+        response = requests.get(image_url)
+        response.raise_for_status()  # Raise an exception for bad status codes
+        image = Image.open(BytesIO(response.content))
+        metadata = {}
+        info = image._getexif()
+        if info:
+            for tag, value in info.items():
+                decoded_tag = TAGS.get(tag, tag)
+                metadata[decoded_tag] = str(value)
+        metadata["format"] = image.format
+        metadata["size"] = image.size
+        metadata["mode"] = image.mode
+        return {"status": "success", "metadata": metadata}
+    except requests.exceptions.RequestException as e:
+        return {"status": "error", "error_message": f"Error downloading image: {e}"}
+    except Exception as e:
+        return {"status": "error", "error_message": str(e)}
 
 
 # Create the agent wrapping the detect_objects tool
 root_agent = Agent(
     name="object_detection_agent",
     model="gemini-2.0-flash",  
-    description="Agent that detects objects in images using YOLOv8.",
+    description="Agent that detects objects in images using YOLOv8 and also finds the metadata of an image using Pillow library of python.",
     instruction=(
-        "You are an assistant that detects objects in images given a URL. "
-        "Return the detected objects with their label, confidence score, and bounding box coordinates."
+        "Analyze the image provided. Your tasks are:"
+        "Object Detection: Identify and list all distinct objects present in the image. For each detected object, provide its name."
+        "Metadata Retrieval: Extract and provide any available metadata associated with the image. This may include information such as:"
+        "Any other relevant technical or descriptive metadata embedded in the image."
+        "Present your findings clearly, separating the object detection results from the metadata."
     ),
-    tools=[detect_objects]
+    tools=[detect_objects, extract_metadata]
 )
