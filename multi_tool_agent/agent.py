@@ -90,8 +90,7 @@ root_agent = Agent(
     instruction=(
         "Analyze the image provided. Your tasks are:"
         "Object Detection: Identify and list all distinct objects present in the image. For each detected object, provide its name."
-        "Metadata Retrieval: Extract and provide any available metadata associated with the image. This may include information such as:"
-        "Any other relevant technical or descriptive metadata embedded in the image."
+        "Metadata Retrieval: Extract and provide any available metadata associated with the image."
         "Present your findings clearly, separating the object detection results from the metadata."
     ),
     tools=[detect_objects, extract_metadata]
