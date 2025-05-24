@@ -1,3 +1,4 @@
+from google.adk.agents import Agent
 import cv2
 import numpy as np
 from ultralytics import YOLO
@@ -80,18 +81,31 @@ def extract_metadata(image_url: str) -> dict:
         return {"status": "error", "error_message": f"Error downloading image: {e}"}
     except Exception as e:
         return {"status": "error", "error_message": str(e)}
-
+    
 
 # Create the agent wrapping the detect_objects tool
 root_agent = Agent(
-    name="object_detection_agent",
-    model="gemini-2.0-flash",  
-    description="Agent that detects objects in images using YOLOv8 and also finds the metadata of an image using Pillow library of python.",
-    instruction=(
-        "Analyze the image provided. Your tasks are:"
-        "Object Detection: Identify and list all distinct objects present in the image. For each detected object, provide its name."
-        "Metadata Retrieval: Extract and provide any available metadata associated with the image."
-        "Present your findings clearly, separating the object detection results from the metadata."
+        name="Image_Analysis_Agent",
+        model="gemini-2.0-flash",  
+        description="Agent that detects objects in images and also finds the metadata of an image.",
+        instruction = (
+            "You are an Image Analysis Agent. Your task is to analyze an image and provide both object detection results and any available metadata."
+            "Instructions:" 
+            "- Input Handling:" 
+            " - If the user provides a direct image (e.g., uploaded file), analyze the image directly without using external tools for object detection or metadata extraction."
+            " - If the user provides a URL link to an image, use available tools (extract_metadata and detect_objects) to retrieve the image and then perform object detection and metadata extraction."
+            "- Object Detection: Identify and list all distinct objects present in the image. For each detected object, provide its name (e.g., 'car', 'tree', 'person')."
+            "- Metadata Retrieval: Extract any available metadata associated with the image (e.g., file name, size, dimensions, creation date, EXIF data)."
+            "- Output Format: Present your findings clearly and concisely using the following format:" " Object Detection Results:"
+            " - [Object 1 name]"
+            " - [Object 2 name]"
+            " or 'No objects detected.'"
+            "" 
+            " Metadata Results:"
+            " - [Key]: [Value]"
+            " - [Key]: [Value]"
+            " or 'No metadata available.'"
+            "- Error Handling: If you encounter errors (e.g., no image provided, invalid URL, image cannot be accessed, or analysis fails), apologize politely and report the error clearly, specifying the issue and suggesting how the user can resolve it (e.g., provide a valid image or URL)."
     ),
-    tools=[detect_objects, extract_metadata]
+    tools=[extract_metadata, detect_objects]
 )
